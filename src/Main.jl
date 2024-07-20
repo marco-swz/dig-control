@@ -5,101 +5,120 @@ using LinearAlgebra
 using StaticArrays
 using Plots
 
-const h_0 = 1    # Initial height
-const v_0 = 0    # Initial velocity
-const m_0 = 1    # Initial mass
-const g_0 = 1    # Gravity at the surface
+const height_initial = 1
+const velocity_initial = 0
+const mass_initial = 1
+const gravity_initial = 1
 
 const T_c = 3.5  # Used for thrust
-const m_c = 0.6  # Fraction of initial mass left at end
+const mass_reduction = 0.6 
 
-const m_f = m_c * m_0              # Final mass
-const T_max = T_c * g_0 * m_0      # Maximum thrust
+const drag_height_factor = 500
+const drag_vel_factor = 620
+
+mass_final = mass_reduction * mass_initial
+thrust_max = T_c * gravity_initial * mass_initial
 
 
-function rocket(x, u, p, _=0)
-    h_c = 500                    # Used for drag
-    v_c = 620                    # Used for drag
-    c = 0.5 * sqrt(g_0 * h_0)    # Thrust-to-fuel mass
-    D_c = 0.5 * v_c * m_0 / g_0  # Drag scaling
+function rocket(state, control, _parameters, _=0)
+    mass_loss_factor= 0.5 * sqrt(gravity_initial * height_initial)
+    drag_scaling = 0.5 * mass_initial / gravity_initial
 
-    h, v, m = x
-    T = u[]                      # Thrust (control signal)
-    drag =  D_c * v^2 * exp(-h_c * (h - h_0) / h_0)
-    grav = g_0 * (h_0 / h)^2
-    SA[
-        v
-        (T - drag - m * grav) / m
-        -T/c
+    height, velocity, mass = state
+    drag = drag_scaling * drag_vel_factor * velocity^2 * exp(-drag_height_factor * (height - height_initial) / height_initial)
+    gravity = gravity_initial * (height_initial / height)^2
+    thrust = control[]
+
+    # Return the dynamics of the system
+    return SA[
+        velocity
+        (thrust - drag - mass * gravity) / mass
+        -thrust / mass_loss_factor
     ]
 end
 
-nu = 1            # number of control inputs
-nx = 3            # number of states
-N  = 200          # Optimization horizon (number of time steps)
-Ts = 0.001        # sample time
-x0 = Float64[h_0, v_0, m_0]   # Initial state
-r = zeros(nx)
 
-measurement = (x,u,p,t) -> x                # The entire state is available for measurement
-dynamics = FunctionSystem(rocket, measurement; x=[:h, :v, :m], u=:T, y=:y^nx)
-discrete_dynamics = MPC.rk4(dynamics, Ts; supersample=3)
+num_controls = 1
+num_states = 3
+num_steps = 200 # Optimization horizon (number of time steps)
+sample_time = 0.001
+state_initial = Float64[height_initial, velocity_initial, mass_initial]
 
-lb = [h_0, v_0, m_f, 0]
-ub = [Inf, Inf, m_0, T_max]
+# The entire state is available for measurement
+measurement = (x, u, p, t) -> x 
 
-stage_constraint = StageConstraint(lb, ub) do si, p, t
-    u = (si.u)[]
-    h,v,m = si.x
-    SA[h, v, m, u]
+dynamics = FunctionSystem(rocket, measurement; x=[:height, :velocity, :mass], u=:thrust, y=:y^num_states)
+discrete_dynamics = MPC.rk4(dynamics, sample_time; supersample=3)
+
+lower_bounds = [height_initial, velocity_initial, mass_final, 0]
+upper_bounds = [Inf, Inf, mass_initial, thrust_max]
+
+# Add lower and upper bounds
+stage_constraint = StageConstraint(lower_bounds, upper_bounds) do si, p, t
+    # NOTE: The re-formating is required to align the structure of the state
+    # with the format of the constraints.
+    height, velocity, mass = si.x
+    thrust = (si.u)[]
+    return SA[height, velocity, mass, thrust]
 end
 
-terminal_constraint = TerminalStateConstraint([m_f], [m_f]) do ti, p, t
-    SA[ti.x[3]] # The final mass must be m_f
+# Add a terminal constraint for the final mass (it must be `mass_final`)
+terminal_constraint = TerminalStateConstraint([mass_final], [mass_final]) do ti, p, t
+    mass = ti.x[3]
+    return SA[mass]
 end
 
-terminal_cost = TerminalCost() do ti, p, t
-    h = ti.x[1]
-    -h # Maximize the terminal altitude
+# Simulate the discrete system with manual thrust inputs
+thrust = [0.7thrust_max * ones(num_controls, num_steps ÷ 5) thrust_max / 5 * ones(num_controls, 4num_steps ÷ 5)]
+state_trajectory, thrust_trajectory = MPC.rollout(discrete_dynamics, state_initial, thrust, 0, 0)
+
+plot(state_trajectory', layout=3)
+
+exit()
+
+# Extract the initial guesses for state and control trajectories
+reference = zeros(num_states)
+objective_input = ObjectiveInput(state_trajectory, thrust_trajectory, reference)
+
+# Define an observer
+observer = StateFeedback(discrete_dynamics, state_initial)
+
+# Define the loss and objective function
+loss = TerminalCost() do ti, p, t
+    height = ti.x[1]
+    -height # Maximize the terminal altitude
 end
+objective = Objective(loss)
 
-objective = Objective(terminal_cost)
-
-u = [0.7T_max * ones(nu, N÷5)  T_max / 5 * ones(nu, 4N÷5) ]
-
-x, u = MPC.rollout(discrete_dynamics, x0, u, 0, 0)
-oi = ObjectiveInput(x, u, r)
-plot(x', layout=3)
-
-observer = StateFeedback(discrete_dynamics, x0)
-
+# Define the solver
 solver = IpoptSolver(;
-        verbose                    = false,
-        tol                        = 1e-8,
-        acceptable_tol             = 1e-5,
-        constr_viol_tol            = 1e-8,
-        acceptable_constr_viol_tol = 1e-5,
-        acceptable_iter            = 10,
+    verbose=false,
+    tol=1e-8,
+    acceptable_tol=1e-5,
+    constr_viol_tol=1e-8,
+    acceptable_constr_viol_tol=1e-5,
+    acceptable_iter=10,
 )
 
-prob = GenericMPCProblem(
+# Define the nonlinear Model-Predictive Control problem
+problem = GenericMPCProblem(
     dynamics;
-    N,
+    num_steps,
     observer,
-    Ts,
+    sample_time,
     objective,
     solver,
-    constraints     = [stage_constraint, terminal_constraint],
-    objective_input = oi,
-    xr              = r,
-    presolve        = true,
-    verbose         = false,
-    jacobian_method = :symbolics, # generation of symbolic constraint Jacobians and Hessians are beneficial when using Trapezoidal as discretization.
-    disc  = Trapezoidal(; dyn=dynamics),
+    constraints=[stage_constraint, terminal_constraint],
+    objective_input=objective_input,
+    xr=reference,
+    presolve=true,
+    verbose=false,
+    jacobian_method=:symbolics, # generation of symbolic constraint Jacobians and Hessians are beneficial when using Trapezoidal as discretization.
+    disc=Trapezoidal(; dyn=dynamics),
 )
 
-x_sol, u_sol = get_xu(prob)
+x_sol, u_sol = get_xu(problem)
 plot(
-    plot(x_sol', title="States",         lab=permutedims(state_names(dynamics)), layout=(nx,1)),
+    plot(x_sol', title="States", lab=permutedims(state_names(dynamics)), layout=(num_states, 1)),
     plot(u_sol', title="Control signal", lab=permutedims(input_names(dynamics))),
 )
