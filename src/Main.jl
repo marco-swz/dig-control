@@ -1,7 +1,6 @@
 using JuliaSimControl
 using JuliaSimControl.MPC
 using JuliaSimControl.Symbolics
-using LinearAlgebra
 using StaticArrays
 using Plots
 
