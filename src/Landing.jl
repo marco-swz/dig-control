@@ -58,10 +58,10 @@ const angle_thrust_final = 0          # [radian]
 const torque_final = 0                # [N*m]
 
 # Number of mesh points (knots) to be used
-const n = 100
+const n = 1000
 const num_controls = 2
 const num_states = 9
-const optimization_horizon = 10
+const optimization_horizon = 100
 
 function rocket(state, control, _parameters, _=0)
     # Destructure state and control variables
@@ -143,10 +143,10 @@ objective_input = ObjectiveInput(state_trajectory, thrust_trajectory, reference)
 # Define the solver
 solver = IpoptSolver(;
     verbose=false,
-    tol=1e-2,
-    acceptable_tol=1e-2,
-    constr_viol_tol=1e-2,
-    acceptable_constr_viol_tol=1e-2,
+    tol=1e-5,
+    acceptable_tol=1e-5,
+    constr_viol_tol=1e-5,
+    acceptable_constr_viol_tol=1e-5,
     acceptable_iter=50,
     exact_hessian=false,
 )
@@ -171,8 +171,9 @@ problem = GenericMPCProblem(
 )
 
 x_sol, u_sol = get_xu(problem)
-plot(
-    plot(x_sol', title="States", lab=permutedims(state_names(dynamics)), layout=(num_states, 1)),
-    plot(u_sol', title="Control signal", lab=permutedims(input_names(dynamics))),
-)
+plot(x_sol[2, :], x_sol[1, :])
+#plot(
+#    plot(x_sol', title="States", lab=permutedims(state_names(dynamics)), layout=(3, 1)),
+#    #plot(u_sol', title="Control signal", lab=permutedims(input_names(dynamics))),
+#)
 
