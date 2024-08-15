@@ -32,8 +32,8 @@ const min_torque = -u_max *v_exhaust * length/2 * sin(max_deflection)
 const x_initial = -600                  # [m] entry x coordinate
 const vx_initial = -50                  # [m/s] entry horizontal speed
 const y_initial = 5000                  # [m] entry altitude
-const vy_initial = 0                    # [m/s] entry vertical speed
-const theta_initial = deg2rad(-90)      # [radian]  - rockets starts free falling in belly down position 
+const vy_initial = -10                    # [m/s] entry vertical speed
+const theta_initial = deg2rad(-45)      # [radian]  - rockets starts free falling in belly down position 
 const vtheta_initial = 0                # [radian/s]
 const m_initial = m_total               # [kg]
 const u_initial = 0                     # [kg/s] - engines off
@@ -54,7 +54,7 @@ const thrust_angle_landing = 0          # [radian]
 const torque_landing = 0                # [N*m]
 
 # Number of mesh points (knots) to be used
-const n = 100
+const n = 1000
 
 # Integration scheme to be used for the dynamics
 const integration_rule = "rectangular";
@@ -148,9 +148,9 @@ for j in 2:n
         @JuMP.NLconstraint(model, m[j] == m[i] - dt[i] * u[i])                 # dm/dt = -u
     elseif integration_rule == "trapezoidal"
         # Trapezoidal integration
-        @JuMP.NLconstraint(model, x[j] == x[i] + 0.5 * dt[i] * (dx[j] + dx[i]))
+        @JuMP.NLconstraint(model, x[j] == x[i] + 0.5 * dt[i] * (vx[j] + vx[i]))
         @JuMP.NLconstraint(model, vx[j] == vx[i] + 0.5 * dt[i] * (dvx[j] + dvx[i]))
-        @JuMP.NLconstraint(model, y[j] == y[i] + 0.5 * dt[i] * (dy[j] + dy[i]))
+        @JuMP.NLconstraint(model, y[j] == y[i] + 0.5 * dt[i] * (vy[j] + vy[i]))
         @JuMP.NLconstraint(model, vy[j] == vy[i] + 0.5 * dt[i] * (dvy[j] + dvy[i]))
         @JuMP.NLconstraint(model, theta[j] == theta[i] + 0.5 * dt[i] * (vtheta[j] + vtheta[i]))
         @JuMP.NLconstraint(model, vtheta[j] == vtheta[i] + 0.5 * dt[i] * (atheta[j] + atheta[i]))

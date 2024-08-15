@@ -11,101 +11,102 @@ using Plots
 const g = 9.81                          # m/s**2
 
 # Rocket dimensions
-const length = 50                       # m
-const width = 9                         # m
+const LENGTH = 50                       # m
+const WIDTH = 9                         # m
 
 # Rocket weight
-const mass_fuel = 1000000/5                # kg (liquid methane)
-const mass_dry = 120000                    # kg (rocket body + payload)
-const mass_total = mass_dry + mass_fuel
+const MASS_FUEL = 1000000/5                # kg (liquid methane)
+const MASS_DRY = 120000                    # kg (rocket body + payload)
+const MASS_TOTAL = MASS_DRY + MASS_FUEL
 
 # Raptor v1 engine characteristics (only 3 engines have been seen working so far)
-const v_exhaust = 3*3280           # m/s exhaust velocity at sea level. 3 sea level + 3 vacuum engines
-const thrust_max = 3*2300000/v_exhaust  # 701 kg/s. One Raptor thrust is 2.3 MN
+const V_EXHAUST = 3*3280           # m/s exhaust velocity at sea level. 3 sea level + 3 vacuum engines
+const THRUST_MAX = 3*2300000/V_EXHAUST  # 701 kg/s. One Raptor thrust is 2.3 MN
 
 # # Inertia for a uniform density rod 
 # I = (1/12) * m_total * length^2
 
 # Torque from engines thrust vestoring 
-const deflection_max = deg2rad(20)      # thrust vectoring +-20°
-const deflection_min = -deflection_max
-const torque_max = thrust_max * v_exhaust * length/2 * sin(deflection_max)
-const torque_min = -thrust_max *v_exhaust * length/2 * sin(deflection_max)
+const DEFLECTION_MAX = deg2rad(20)      # thrust vectoring +-20°
+const DEFLECTION_MIN = -DEFLECTION_MAX
+const TORQUE_MAX = THRUST_MAX * V_EXHAUST * LENGTH/2 * sin(DEFLECTION_MAX)
+const TORGUE_MIN = -THRUST_MAX *V_EXHAUST * LENGTH/2 * sin(DEFLECTION_MAX)
 
 # Initial conditions
-const x_init = -600                  # [m] entry x coordinate
-const d_x_init = -50                  # [m/s] entry horizontal speed
-const y_init = 5000                  # [m] entry altitude
-const d_y_init = 0                    # [m/s] entry vertical speed
-const angle_init = deg2rad(-90)      # [radian]  - rockets starts free falling in belly down position 
-const d_angle_init = 0                # [radian/s]
-const mass_init = mass_total               # [kg]
-const thrust_init = 0                     # [kg/s] - engines off
-const angle_thrust_init = 0          # [radian]
-const torque_init = 0                # [N*m]
-const sample_time = 0.001           # [s]
+const X_INIT = -600                  # [m] entry x coordinate
+const D_X_INIT = -50                  # [m/s] entry horizontal speed
+const Y_INIT = 5000                  # [m] entry altitude
+const D_Y_INIT = 0                    # [m/s] entry vertical speed
+const ANGLE_INIT = deg2rad(-90)      # [radian]  - rockets starts free falling in belly down position 
+const D_ANGLE_INIT = 0                # [radian/s]
+const MASS_INIT = MASS_TOTAL               # [kg]
+const THRUST_INIT = 0                     # [kg/s] - engines off
+const ANGLE_THRUST_INIT = 0          # [radian]
+const TORQUE_INIT = 0                # [N*m]
+const SAMPLE_TIME = 0.001           # [s]
 
 # Final conditions
-const x_final = 0                     # [m] landing x coordinate. Bottom middle of sim box 
-const d_x_final = 0                    # [m/s] landing altitude
-const y_final = 0                     # [m] landing altitude
-const d_y_final = 0                    # [m/s] landing speed
-const angle_final = 0                 # [radian] - land upright 
-const d_angle_final = 0                # [radian/s]
+const X_FINAL = 0                     # [m] landing x coordinate. Bottom middle of sim box 
+const D_X_FINAL = 0                    # [m/s] landing altitude
+const Y_FINAL = 0                     # [m] landing altitude
+const D_Y_FINAL = 0                    # [m/s] landing speed
+const ANGLE_FINAL = 0                 # [radian] - land upright 
+const D_ANGLE_FINAL = 0                # [radian/s]
 # const m_landing = 0.5*m_total           # [kg]
 # const u_landing = 0                     # [kg/s]
-const angle_thrust_final = 0          # [radian]
-const torque_final = 0                # [N*m]
+const ANGLE_TRHUST_FINAL = 0          # [radian]
+const TORQUE_FINAL = 0                # [N*m]
 
 # Number of mesh points (knots) to be used
-const n = 1000
-const num_controls = 2
-const num_states = 9
-const optimization_horizon = 100
+const N = 100
+const NUM_CONTROLS = 2
+const NUM_STATES = 9
+const OPTIMIZATION_HORIZON = 100
 
 function rocket(state, control, _parameters, _=0)
     # Destructure state and control variables
     y, x, angle, mass, d_y, d_x, d_angle, d_t, fuel = state
     thrust, angle_thrust = control
 
-    torque = -0.5 * length * v_exhaust * thrust * sin(angle_thrust)
+    torque = -0.5 * LENGTH * V_EXHAUST * thrust * sin(angle_thrust)
 
-    dd_y = (mass * g + v_exhaust * thrust * cos(angle_thrust + angle)) / mass
-    dd_x = (v_exhaust * thrust * sin(angle_thrust + angle)) / mass
+    dd_y = (-mass * g + V_EXHAUST * thrust * cos(angle_thrust + angle)) / mass
+    dd_x = (V_EXHAUST * thrust * sin(angle_thrust + angle)) / mass
     # ang accel = torque / moment of inertia
-    dd_angle = torque / (mass * length^2 / 12)
+    dd_angle = torque / (mass * LENGTH^2 / 12)
 
-    mass = mass - thrust * d_t
+    mass -= thrust * d_t
 
-    y = y + d_y * d_t
-    x = x + d_x * d_t
-    angle = angle + d_angle * d_t
+    y += d_y * d_t
+    x += d_x * d_t
+    angle += d_angle * d_t
 
-    d_x = d_x + dd_x * d_t
-    d_y = d_y + dd_y * d_t
-    d_angle = d_angle + dd_angle * d_t
+    d_x += dd_x * d_t
+    d_y += dd_y * d_t
+    d_angle += dd_angle * d_t
 
-    fuel = thrust
+    fuel += thrust
 
     return SA[y, x, angle, mass, d_y, d_x, d_angle, d_t, fuel]
 end
 
-state_init = Float64[y_init, x_init, angle_init, mass_init, d_y_init, d_x_init, d_angle_init, sample_time, 0]
-state_final = Float64[y_final, x_final, angle_final, mass_dry, d_y_final, d_x_final, d_angle_final, sample_time, 0]
+state_init = Float64[Y_INIT, X_INIT, ANGLE_INIT, MASS_INIT, D_Y_INIT, D_X_INIT, D_ANGLE_INIT, SAMPLE_TIME, 0]
+state_final = Float64[Y_FINAL, X_FINAL, ANGLE_FINAL, MASS_DRY, D_Y_FINAL, D_X_FINAL, D_ANGLE_FINAL, SAMPLE_TIME, 0]
 
 # The entire state is available for measurement
 measurement = (x, u, p, t) -> x 
 
 dynamics = FunctionSystem(
     rocket, 
-    measurement; 
+    measurement;
     x=[:y, :x, :angle, :mass, :d_y, :d_x, :d_angle, :d_t, :fuel], 
-    u=[:thrust, :angle_thrust], y=:y^num_states
+    u=[:thrust, :angle_thrust], 
+    y=:y^NUM_STATES
 )
-discrete_dynamics = MPC.rk4(dynamics, sample_time; supersample=3)
+discrete_dynamics = MPC.rk4(dynamics, SAMPLE_TIME; supersample=3)
 
-lower_bounds = [0, -1500, -2*pi, mass_total, -80, -80, -deg2rad(45), sample_time, 0, deflection_min, 0]
-upper_bounds = [y_init, 1500, 2*pi, mass_dry, 0, 80, deg2rad(45), sample_time, thrust_max, deflection_max, thrust_max]
+upper_bounds = [Y_INIT, 1500, 2*pi, MASS_TOTAL, 0, 80, deg2rad(45), SAMPLE_TIME, THRUST_MAX, DEFLECTION_MAX]
+lower_bounds = [0, -1500, -2*pi, MASS_DRY, -80, -80, -deg2rad(45), SAMPLE_TIME, 0, DEFLECTION_MIN]
 
 # Add lower and upper bounds
 stage_constraint = StageConstraint(lower_bounds, upper_bounds) do si, p, t
@@ -113,11 +114,11 @@ stage_constraint = StageConstraint(lower_bounds, upper_bounds) do si, p, t
     # with the format of the constraints.
     y, x, angle, mass, d_y, d_x, d_angle, d_t, fuel = si.x
     thrust, angle_thrust = si.u
-    return SA[y, x, angle, mass, d_y, d_x, d_angle, d_t, thrust, angle_thrust, fuel]
+    return SA[y, x, angle, mass, d_y, d_x, d_angle, d_t, thrust, angle_thrust]
 end
 
 # Add a terminal constraint for the final mass (it must be `mass_dry`)
-terminal_constraint = TerminalStateConstraint([mass_dry], [mass_dry]) do ti, p, t
+terminal_constraint = TerminalStateConstraint([MASS_DRY], [MASS_DRY]) do ti, p, t
     mass = ti.x[4]
     return SA[mass]
 end
@@ -135,8 +136,8 @@ end
 objective = Objective(loss)
 
 # Create objective input
-reference = zeros(num_states)
-thrust = zeros(num_controls, optimization_horizon)
+reference = zeros(NUM_STATES)
+thrust = zeros(NUM_CONTROLS, OPTIMIZATION_HORIZON)
 state_trajectory, thrust_trajectory = MPC.rollout(discrete_dynamics, state_init, thrust, 0, 0)
 objective_input = ObjectiveInput(state_trajectory, thrust_trajectory, reference)
 
@@ -154,9 +155,9 @@ solver = IpoptSolver(;
 # Define the nonlinear Model-Predictive Control problem
 problem = GenericMPCProblem(
     dynamics;
-    N=optimization_horizon,
+    N=OPTIMIZATION_HORIZON,
     observer=observer,
-    Ts=sample_time,
+    Ts=SAMPLE_TIME,
     objective=objective,
     solver=solver,
     constraints=[stage_constraint, terminal_constraint],
@@ -171,9 +172,9 @@ problem = GenericMPCProblem(
 )
 
 x_sol, u_sol = get_xu(problem)
-plot(x_sol[2, :], x_sol[1, :])
-#plot(
-#    plot(x_sol', title="States", lab=permutedims(state_names(dynamics)), layout=(3, 1)),
-#    #plot(u_sol', title="Control signal", lab=permutedims(input_names(dynamics))),
-#)
+#plot(x_sol[2, :], x_sol[1, :])
+plot(
+    plot(x_sol', title="States", lab=permutedims(state_names(dynamics)), layout=(3, 3)),
+    #plot(u_sol', title="Control signal", lab=permutedims(input_names(dynamics))),
+)
 
