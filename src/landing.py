@@ -4,11 +4,12 @@ import pyomo.dae as pyd
 import numpy as np
 import time
 
-ipopt_executable = '$IPOPT_PATH/bin/ioopt'
+ipopt_executable = 'ipopt'
 
 from matplotlib import pyplot as plt, rc
 from matplotlib.animation import FuncAnimation, PillowWriter, FFMpegWriter
-rc('animation', html='jshtml')
+#rc('animation', html='jshtml')
+plt.switch_backend('WebAgg')
 
 # Rocket parameters
 m_fuel = 1000000/5                # kg (liquid methane)
@@ -41,16 +42,17 @@ min_torque = -u_max *v_exhaust * length/2 * np.sin(max_deflection)
 
 def solve(m):
     discretizer = pye.TransformationFactory('dae.finite_difference')
-    discretizer.apply_to(m, nfe=150, method='backward') 
+    discretizer.apply_to(m,nfe=150,wrt=m.t,scheme='BACKWARD')
     solver = pye.SolverFactory('ipopt', executable=ipopt_executable)
-    
+
     # https://www.coin-or.org/Bonmin/option_pages/options_list_ipopt.html
     # https://coin-or.github.io/Ipopt/OPTIONS.html
     solver.options['max_iter']= 10000    # 3000 default
     solver.options['max_cpu_time'] = 2*60
     solver.options['tol'] = 1E-4
     st_ts = time.time()
-    solver.solve(m)   # tee=True - prints logs, timelimit=60
+    status = solver.solve(m)   # tee=True - prints logs, timelimit=60
+    print(status)
     print(f'Solver time {round(time.time() - st_ts,3)} seconds')
     print(f'Objective value {round(m.obj(),3)}')
 
@@ -89,23 +91,24 @@ def plot(m):
     ax4.ticklabel_format(axis='y', style='plain')
     
     plt.tight_layout()
+    plt.show()
 
 # Variables
 m = pye.ConcreteModel()                             # Initialize model
 m.t = pyd.ContinuousSet(bounds=(0,1))               # scaled time
-m.x = pye.Var(m.t)                                  # x [m]
-m.y = pye.Var(m.t, domain=pye.NonNegativeReals)     # y [m]
-m.theta = pye.Var(m.t, bounds=(-2*np.pi,2*np.pi))   # angle of rotation along rocket centre [radian]
-m.m = pye.Var(m.t, bounds=(m_dry, m_total))         # rocket mass (dry + fuel) [kg]
-m.u = pye.Var(m.t, bounds=(0,u_max))                # engine mass flow [kg/s]
-m.thrust_angle = pye.Var(m.t, bounds=(min_deflection,max_deflection))   # thrust vectoring angle [radian]
-m.torque = pye.Var(m.t, bounds=(min_torque,max_torque))                 # Torque from thrust vectoring [N*m]
-m.T = pye.Var(bounds=(50,3000))                     # landing time [s]
-m.slack = pye.Var(m.t, bounds=(-10000,10000))
+m.x = pye.Var(m.t, initialize=-600)                                  # x [m]
+m.y = pye.Var(m.t, initialize=h_initial, domain=pye.NonNegativeReals)     # y [m]
+m.theta = pye.Var(m.t, initialize=np.pi/2, bounds=(-2*np.pi,2*np.pi))   # angle of rotation along rocket centre [radian]
+m.m = pye.Var(m.t, initialize=m_total, bounds=(m_dry, m_total))         # rocket mass (dry + fuel) [kg]
+m.u = pye.Var(m.t, initialize=0, bounds=(0,u_max))                # engine mass flow [kg/s]
+m.thrust_angle = pye.Var(m.t, initialize=0, bounds=(min_deflection,max_deflection))   # thrust vectoring angle [radian]
+m.torque = pye.Var(m.t, initialize=0, bounds=(min_torque,max_torque))                 # Torque from thrust vectoring [N*m]
+m.T = pye.Var(initialize=100, bounds=(50,3000))                     # landing time [s]
+m.slack = pye.Var(m.t, initialize=0, bounds=(-10000,10000))
 
 m.vx = pyd.DerivativeVar(m.x, wrt=m.t)              # m/s horizontal velocity
 m.vy = pyd.DerivativeVar(m.y, wrt=m.t)              # m/s vertical speed
-m.vtheta = pyd.DerivativeVar(m.theta, wrt=m.t)      # radian/s angular velocity
+m.vtheta = pyd.DerivativeVar(m.theta, initialize=0, wrt=m.t)      # radian/s angular velocity
 m.ax = pyd.DerivativeVar(m.vx, wrt=m.t)             # m/s2 horizontal acceleration
 m.ay = pyd.DerivativeVar(m.vy, wrt=m.t)             # m/s2 vetical acceleration
 m.atheta = pyd.DerivativeVar(m.vtheta, wrt=m.t)     # radian/s2 angular acceleration

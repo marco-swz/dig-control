@@ -10,16 +10,13 @@
         pkgs = import nixpkgs {
             inherit system;
         };
-        python33 = ((pkgs.python3.override {
-            sourceVersion = {major = "3"; minor = "3" ; patch = "6"; suffix = ""; };
-        }));
     in rec {
         devShell = (pkgs.buildFHSUserEnv {
             name = "julia-env";
             targetPkgs = pkgs: (with pkgs; [
                 ipopt
                 julia-bin
-                (python33.withPackages(ps: with ps; [
+                (python311.withPackages(ps: with ps; [
                     virtualenv
                 ]))
             ]);
