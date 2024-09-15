@@ -3,6 +3,16 @@ import JuMP
 using Ipopt
 using Plots: plot, grid
 
+# initialize global parameters
+
+user_options_ipopt = (
+    "mu_strategy" => "monotone",
+    "linear_solver" => "ma27", 
+    "max_iter" => 4000,
+    "max_cpu_time" => 180.,     # sec
+    "print_level" => 4          # 5 default
+)
+
 # Global variables
 const g = 9.81                          # m/s**2
 
@@ -32,8 +42,8 @@ const min_torque = -u_max *v_exhaust * length/2 * sin(max_deflection)
 const x_initial = -600                  # [m] entry x coordinate
 const vx_initial = -50                  # [m/s] entry horizontal speed
 const y_initial = 5000                  # [m] entry altitude
-const vy_initial = -10                    # [m/s] entry vertical speed
-const theta_initial = deg2rad(-45)      # [radian]  - rockets starts free falling in belly down position 
+const vy_initial = 0                    # [m/s] entry vertical speed
+const theta_initial = deg2rad(-90)      # [radian]  - rockets starts free falling in belly down position 
 const vtheta_initial = 0                # [radian/s]
 const m_initial = m_total               # [kg]
 const u_initial = 0                     # [kg/s] - engines off
@@ -54,20 +64,10 @@ const thrust_angle_landing = 0          # [radian]
 const torque_landing = 0                # [N*m]
 
 # Number of mesh points (knots) to be used
-const n = 1000
+const n = 100
 
 # Integration scheme to be used for the dynamics
 const integration_rule = "rectangular";
-
-user_options_ipopt = (
-    "mu_strategy" => "monotone",
-    "linear_solver" => "ma27",  # For the best results, it is advised to experiment different linear solvers.
-                                # If Ipopt is not compiled with MA27/MA57, it may fallback to 'MUMPS'.
-                                # In general, the linear solver MA27 is much faster than MUMPS.
-    "max_iter" => 4000,
-    "max_cpu_time" => 180.,     # sec
-    "print_level" => 4          # 5 default
-)
 
 # Create JuMP model, using Ipopt as the solver
 model = JuMP.Model(JuMP.optimizer_with_attributes(Ipopt.Optimizer, user_options_ipopt...));
@@ -85,39 +85,8 @@ model = JuMP.Model(JuMP.optimizer_with_attributes(Ipopt.Optimizer, user_options_
                          dt[1:n] == time_step       # time step [sec]
 end)
 
-# Fix initial conditions
-JuMP.fix(x[1], x_initial; force=true)
-JuMP.fix(vx[1], vx_initial; force=true)
-JuMP.fix(y[1], y_initial; force=true)
-JuMP.fix(vy[1], vy_initial; force=true)
-JuMP.fix(theta[1], theta_initial; force=true)
-JuMP.fix(vtheta[1], vtheta_initial; force=true)
-JuMP.fix(m[1], m_initial; force=true)
-JuMP.fix(u[1], u_initial; force=true)
-JuMP.fix(thrust_angle[1], thrust_angle_initial; force=true)
-
-# Fix final conditions
-JuMP.fix(x[n], x_landing; force=true)
-JuMP.fix(vx[n], vx_landing; force=true)
-JuMP.fix(y[n], y_landing; force=true)
-JuMP.fix(vy[n], vy_landing; force=true)
-JuMP.fix(theta[n], theta_landing; force=true)
-JuMP.fix(vtheta[n], vtheta_landing; force=true)
-# JuMP.fix(m[n], m_landing; force=true)
-# JuMP.fix(u[n], u_landing; force=true)
-JuMP.fix(thrust_angle[n], thrust_angle_landing; force=true)
-
-# Initial guess: linear interpolation between boundary conditions
-initial = [x_initial, vx_initial, y_initial, vy_initial, theta_initial, vtheta_initial, 
-                m_initial, u_initial, thrust_angle_initial, time_step]
-final = [x_landing, vx_landing, y_landing, vy_landing, theta_landing, vtheta_landing, 
-                m_initial, u_initial, thrust_angle_landing, time_step]
-
-interp_linear = Interpolations.LinearInterpolation([1, n], [initial, final])
-initial_guess = Interpolations.mapreduce(transpose, vcat, interp_linear.(1:n))
-print(size(initial_guess))
-
-JuMP.set_start_value.(JuMP.all_variables(model), vec(initial_guess));
+# fix boundary conditions
+# set initial guess
 
 # Torque from engine thrust vectoring 
 @JuMP.NLexpression(model, torque[j = 1:n], -0.5*length*v_exhaust*u[j]*sin(thrust_angle[j]))
@@ -148,9 +117,9 @@ for j in 2:n
         @JuMP.NLconstraint(model, m[j] == m[i] - dt[i] * u[i])                 # dm/dt = -u
     elseif integration_rule == "trapezoidal"
         # Trapezoidal integration
-        @JuMP.NLconstraint(model, x[j] == x[i] + 0.5 * dt[i] * (vx[j] + vx[i]))
+        @JuMP.NLconstraint(model, x[j] == x[i] + 0.5 * dt[i] * (dx[j] + dx[i]))
         @JuMP.NLconstraint(model, vx[j] == vx[i] + 0.5 * dt[i] * (dvx[j] + dvx[i]))
-        @JuMP.NLconstraint(model, y[j] == y[i] + 0.5 * dt[i] * (vy[j] + vy[i]))
+        @JuMP.NLconstraint(model, y[j] == y[i] + 0.5 * dt[i] * (dy[j] + dy[i]))
         @JuMP.NLconstraint(model, vy[j] == vy[i] + 0.5 * dt[i] * (dvy[j] + dvy[i]))
         @JuMP.NLconstraint(model, theta[j] == theta[i] + 0.5 * dt[i] * (vtheta[j] + vtheta[i]))
         @JuMP.NLconstraint(model, vtheta[j] == vtheta[i] + 0.5 * dt[i] * (atheta[j] + atheta[i]))
@@ -169,8 +138,8 @@ end
 println("Objective function value = ", round(JuMP.objective_value(model), digits = 4))
 println("Fuel used = ", round(JuMP.value(fuel), digits = 4))
 
+# plot results
 ts = cumsum([0; JuMP.value.(dt)])[1:end-1]
-
 plt_altitude = plot(ts, JuMP.value.(y), legend = nothing, title = "Altitude (m)")
 plt_x = plot(ts, JuMP.value.(x), legend = nothing, title = "Horizontal movement (m)")
 plt_vy = plot(ts, JuMP.value.(vy), legend = nothing, title = "Vertical speed (m/s)")

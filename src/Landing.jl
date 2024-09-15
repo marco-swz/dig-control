@@ -85,7 +85,7 @@ function rocket(state, control, _parameters, _=0)
     d_y += dd_y * d_t
     d_angle += dd_angle * d_t
 
-    fuel += thrust
+    fuel -= thrust
 
     return SA[y, x, angle, mass, d_y, d_x, d_angle, d_t, fuel]
 end

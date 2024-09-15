@@ -71,10 +71,6 @@ end
 thrust = [0.7thrust_max * ones(num_controls, num_steps ÷ 5) thrust_max / 5 * ones(num_controls, 4num_steps ÷ 5)]
 state_trajectory, thrust_trajectory = MPC.rollout(discrete_dynamics, state_initial, thrust, 0, 0)
 
-plot(state_trajectory', layout=3)
-
-exit()
-
 # Extract the initial guesses for state and control trajectories
 reference = zeros(num_states)
 objective_input = ObjectiveInput(state_trajectory, thrust_trajectory, reference)
@@ -102,11 +98,11 @@ solver = IpoptSolver(;
 # Define the nonlinear Model-Predictive Control problem
 problem = GenericMPCProblem(
     dynamics;
-    num_steps,
-    observer,
-    sample_time,
-    objective,
-    solver,
+    N=num_steps,
+    observer=observer,
+    Ts=sample_time,
+    objective=objective,
+    solver=solver,
     constraints=[stage_constraint, terminal_constraint],
     objective_input=objective_input,
     xr=reference,
